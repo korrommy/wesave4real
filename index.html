@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WeSavE - ศูนย์เฝ้าระวังแผ่นดินไหว</title>
+
+  <!-- Fonts & Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+  <style>
+  :root {
+    --bg-dark: #0f172a;
+    --bg-card: #1e293b;
+    --primary: #3b82f6;
+    --text-main: #f8fafc;
+    --text-sub: #94a3b8;
+    --status-green: #22c55e;
+    --status-yellow: #eab308;
+    --status-red: #ef4444;
+  }
+
+  body {
+    font-family: 'Kanit', sans-serif;
+    margin: 0;
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+  }
+
+  #app { max-width: 1400px; margin: auto; }
+
+  header {
+    background: var(--bg-card);
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #334155;
+    position: sticky; top: 0; z-index: 1000;
+  }
+
+  .logo { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
+  nav ul { list-style: none; display: flex; gap: 20px; margin: 0; padding: 0; }
+  nav a { color: var(--text-sub); text-decoration: none; }
+  nav a.active, nav a:hover { color: var(--text-main); }
+
+  main { padding: 20px; }
+
+  .dashboard-panel {
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 25px;
+    margin-bottom: 30px;
+  }
+
+  .panel-header { display: flex; justify-content: space-between; align-items: center; }
+
+  .live-badge {
+    background: var(--status-red);
+    padding: 4px 12px;
+    border-radius: 20px;
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes pulse { 50% { opacity: 0.5; } }
+
+  .device-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+  }
+
+  .status-card, .data-card, .info-card {
+    background: #0f172a;
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid #334155;
+    text-align: center;
+  }
+
+  .traffic-light {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 15px;
+    background: #000;
+    padding: 10px;
+    border-radius: 30px;
+  }
+
+  .light { width: 30px; height: 30px; border-radius: 50%; background: #333; }
+  .light.green.active { background: var(--status-green); box-shadow: 0 0 15px var(--status-green); }
+  .light.yellow.active { background: var(--status-yellow); box-shadow: 0 0 15px var(--status-yellow); }
+  .light.red.active { background: var(--status-red); box-shadow: 0 0 20px var(--status-red); }
+
+  .magnitude-circle { font-size: 3.5rem; font-weight: bold; color: var(--primary); }
+
+  .info-row { display: flex; justify-content: space-between; color: var(--text-sub); padding: 8px 0; }
+
+  .map-container {
+  position: relative;   /* ⭐ สำคัญ */
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  height: 500px;
+}
+
+
+  #map { width: 100%; height: 100%; border-radius: 12px; }
+
+ .map-legend {
+  position: absolute;
+  top: 70px;        /* หลบปุ่ม zoom ของ Leaflet */
+  left: 10px;       /* มุมซ้ายของแผนที่ */
+  background: #0f172aee;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+  z-index: 500;
+  pointer-events: none; /* ไม่บังการลากแผนที่ */
+}
+
+  .map-legend h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.9rem;
+  }
+
+  .legend-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+  }
+
+  .legend-dot.green { background: #22c55e; }
+  .legend-dot.yellow { background: #eab308; }
+  .legend-dot.orange { background: #f97316; }
+  .legend-dot.red { background: #ef4444; }
+
+  .sidebar-list {
+    background: #0f172a;
+    border-radius: 12px;
+    overflow-y: auto;
+  }
+
+  .earthquake-item {
+    padding: 15px;
+    border-bottom: 1px solid #334155;
+    cursor: pointer;
+  }
+
+  .earthquake-item:hover { background: #1e293b; }
+
+  .leaflet-popup-content-wrapper,
+  .leaflet-popup-tip {
+    background: #0f172a;
+    color: #f8fafc;
+  }
+
+  @media (max-width: 768px) {
+    .map-container { grid-template-columns: 1fr; height: auto; }
+    #map { height: 300px; }
+    .sidebar-list { height: 300px; }
+  }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo"><i class="fas fa-globe-asia"></i> WeSavE</div>
+    <nav>
+      <ul>
+        <li><a class="active">สถานะอุปกรณ์</a></li>
+        <li><a>แผนที่โลก</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section class="dashboard-panel">
+      <div class="panel-header">
+        <h2><i class="fas fa-satellite-dish"></i> My Seismometer (ESP32)</h2>
+        <span class="live-badge">● LIVE</span>
+      </div>
+
+      <div class="device-grid">
+        <div class="status-card">
+          <div class="traffic-light">
+            <div class="light green active" id="light-green"></div>
+            <div class="light yellow" id="light-yellow"></div>
+            <div class="light red" id="light-red"></div>
+          </div>
+          <h3 id="status-text">NORMAL</h3>
+        </div>
+
+        <div class="data-card">
+          <div class="magnitude-circle" id="device-mag">0.00</div>
+          Richter
+        </div>
+
+        <div class="info-card">
+          <div class="info-row"><span>ตำแหน่ง</span><span>Home</span></div>
+          <div class="info-row"><span>อัปเดตล่าสุด</span><span id="last-update">-</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dashboard-panel">
+      <h2><i class="fas fa-map-marked-alt"></i> แผ่นดินไหวทั่วโลก (USGS)</h2>
+      <div class="map-container">
+        <div id="map"></div>
+        <div id="map-legend" class="map-legend">
+          <h4>ระดับความรุนแรง</h4>
+          <div><span class="legend-dot green"></span> ต่ำกว่า 3 : เบามาก</div>
+          <div><span class="legend-dot yellow"></span> 3 – 4.9 : รู้สึกได้</div>
+          <div><span class="legend-dot orange"></span> 5 – 6.9 : เริ่มอันตราย</div>
+          <div><span class="legend-dot red"></span> ≥ 7 : รุนแรงมาก</div>
+        </div>
+        <div id="earthquake-list" class="sidebar-list"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<!-- Leaflet -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+// ================= Firebase =================
+const firebaseConfig = {
+  apiKey: "AIzaSyCWZGE0N7Mfgq-08-gdEfOtrT_ctxkVcNo",
+  authDomain: "app3-77caa.firebaseapp.com",
+  databaseURL: "https://app3-77caa-default-rtdb.asia-southeast1.firebasedatabase.app/",
+  projectId: "app3-77caa",
+  storageBucket: "app3-77caa.firebasestorage.app",
+  messagingSenderId: "1027035595892",
+  appId: "1:1027035595892:web:b68445e67d1ce54235fd21"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ================= Map =================
+const map = L.map('map').setView([13.7, 100.5], 5);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+const quakeLayer = L.featureGroup().addTo(map);
+
+function magColor(mag) {
+  if (mag >= 7) return '#ef4444';
+  if (mag >= 5) return '#f97316';
+  if (mag >= 3) return '#eab308';
+  return '#22c55e';
+}
+
+async function loadEarthquakes() {
+  const res = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson');
+  const data = await res.json();
+
+  quakeLayer.clearLayers();
+  document.getElementById('earthquake-list').innerHTML = '';
+
+  data.features.forEach(eq => {
+    const [lon, lat] = eq.geometry.coordinates;
+    const mag = eq.properties.mag || 0;
+    const place = eq.properties.place || 'Unknown';
+
+    const color = magColor(mag);
+
+    // วงแสดง
+    const areaCircle = L.circle([lat, lon], {
+      radius: mag * 20000,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.25,
+      weight: 1
+    });
+
+    // จุดศูนย์กลาง (circleMarker)
+    const centerMarker = L.circleMarker([lat, lon], {
+      radius: Math.max(mag * 2, 4),
+      fillColor: color,
+      fillOpacity: 1,
+      color: '#000',
+      weight: 1
+    }).bindPopup(`<b>Magnitude ${mag.toFixed(1)}</b><br>${place}`);
+
+    areaCircle.addTo(quakeLayer);
+    centerMarker.addTo(quakeLayer);
+
+    const item = document.createElement('div');
+    item.className = 'earthquake-item';
+    item.innerText = `Mag ${mag.toFixed(1)} - ${place}`;
+    item.onclick = () => {
+      map.flyTo([lat, lon], 6);
+      centerMarker.openPopup();
+    };
+    document.getElementById('earthquake-list').appendChild(item);
+  });
+}
+
+loadEarthquakes();
+setInterval(loadEarthquakes, 120000);
+
+// ================= ESP32 =================
+db.ref('sensor/seismometer').on('value', snap => {
+  const mag = snap.val()?.magnitude || 0;
+  document.getElementById('device-mag').innerText = mag.toFixed(2);
+  document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
+
+  ['light-green','light-yellow','light-red'].forEach(id => document.getElementById(id).classList.remove('active'));
+
+  if (mag >= 5) {
+    document.getElementById('light-red').classList.add('active');
+    document.getElementById('status-text').innerText = 'DANGER';
+  } else if (mag >= 3) {
+    document.getElementById('light-yellow').classList.add('active');
+    document.getElementById('status-text').innerText = 'WARNING';
+  } else {
+    document.getElementById('light-green').classList.add('active');
+    document.getElementById('status-text').innerText = 'NORMAL';
+  }
+});
+</script>
+</body>
+</html>
